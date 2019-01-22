@@ -2,6 +2,7 @@
 
 namespace DNADesign\Populate;
 
+use SilverStripe\Assets\File;
 use SilverStripe\Control\Director;
 use SilverStripe\Core\ClassInfo;
 use SilverStripe\Core\Config\Configurable;
@@ -61,29 +62,30 @@ class Populate
 			throw new \Exception('requireRecords can only be run in development or test environments');
 		}
 
-		$factory = Injector::inst()->create('DNADesign\Populate\PopulateFactory');
+		/** @var PopulateFactory $factory */
+		$factory = Injector::inst()->create(PopulateFactory::class);
 
 		foreach(self::config()->get('truncate_objects') as $objName) {
 			$versions = array();
 
 			if(class_exists($objName)) {
-				foreach(DataList::create($objName) as $obj) {
-					// if the object has the versioned extension, make sure we delete
-					// that as well
-					if($obj->hasExtension('SilverStripe\Versioned\Versioned')) {
-						foreach($obj->getVersionedStages() as $stage) {
-							$versions[$stage] = true;
+				if (in_array($objName, ClassInfo::subclassesFor(File::class))) {
+                    foreach(DataList::create($objName) as $obj) {
+                        /** @var File $obj */
+                        $obj->deleteFile();
+                    }
+                }
 
-							$obj->deleteFromStage($stage);
-						}
-					}
+                // Get one of the objects, check for the versioned extensions and get all stages to truncate
+                $obj = new $objName();
 
-					try {
-						@$obj->delete();
-					} catch(\Exception $e) {
-						// notice
-					}
-				}
+                // if the object has the versioned extension, make sure we delete
+                // that as well
+                if($obj->hasExtension('SilverStripe\Versioned\Versioned')) {
+                    foreach($obj->getVersionedStages() as $stage) {
+                        $versions[$stage] = true;
+                    }
+                }
 			}
 
 			if($versions) {
@@ -99,6 +101,7 @@ class Populate
 		}
 
 		foreach(self::config()->get('include_yaml_fixtures') as $fixtureFile) {
+			DB::alteration_message(sprintf('Processing %s', $fixtureFile), 'created');
 			$fixture = new YamlFixture($fixtureFile);
 			$fixture->writeInto($factory);
 
@@ -114,6 +117,11 @@ class Populate
 		} else {
 			$populate = $this;
 		}
+
+		DB::alteration_message("");
+        DB::alteration_message("");
+		DB::alteration_message("Processing failed fixtures", "created");
+		$factory->processFailedFixtures();
 
 		$populate->extend('onAfterPopulateRecords');
 
