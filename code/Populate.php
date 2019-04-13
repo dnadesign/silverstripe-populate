@@ -3,8 +3,8 @@
 /**
  * @package populate
  */
-class Populate extends Object {
-		
+class Populate extends SS_Object {
+
 	/**
 	 * @config
 	 *
@@ -89,7 +89,7 @@ class Populate extends Object {
 
 			$fixture = null;
 		}
-			
+
 		// hook allowing extensions to clean up records, modify the result or
 		// export the data to a SQL file (for importing performance).
 		$static = !(isset($this) && get_class($this) == __CLASS__);
@@ -119,7 +119,7 @@ class Populate extends Object {
 
 	private static function truncate_versions($table, $versions) {
 		self::truncate_table($table .'_versions');
-		
+
 		foreach($versions as $stage => $v) {
 			self::truncate_table($table . '_'. $stage);
 		}
