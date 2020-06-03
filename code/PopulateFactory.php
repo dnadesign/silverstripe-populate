@@ -12,51 +12,56 @@ use SilverStripe\Core\Injector\Injector;
 use SilverStripe\Dev\FixtureBlueprint;
 use SilverStripe\Dev\FixtureFactory;
 use SilverStripe\ORM\DataList;
+use SilverStripe\ORM\DataObject;
 use SilverStripe\ORM\DB;
 use SilverStripe\Versioned\Versioned;
 
 /**
  * @package populate
  */
-class PopulateFactory extends FixtureFactory {
+class PopulateFactory extends FixtureFactory
+{
 
-	/**
-	 * Creates the object in the database as the original object will be wiped.
-	 *
-	 * @param string $class
-	 * @param string $identifier
-	 * @param array $data
-	 */
-	public function createObject($class, $identifier, $data = null) {
-		DB::alteration_message("Creating $identifier ($class)", "created");
+    /**
+     * Creates the object in the database as the original object will be wiped.
+     *
+     * @param string $class
+     * @param string $identifier
+     * @param array $data
+     * @return DataObject|Versioned|null
+     * @throws \SilverStripe\ORM\ValidationException
+     */
+    public function createObject($class, $identifier, $data = null)
+    {
+        DB::alteration_message("Creating $identifier ($class)", "created");
 
-		if($data) {
-			foreach($data as $k => $v) {
-				if(!(is_array($v)) && preg_match('/^`(.)*`;$/', $v)) {
-					$str = substr($v, 1, -2);
-					$pv = null;
+        if ($data) {
+            foreach ($data as $k => $v) {
+                if (!(is_array($v)) && preg_match('/^`(.)*`;$/', $v)) {
+                    $str = substr($v, 1, -2);
+                    $pv = null;
 
-					eval("\$pv = $str;");
+                    eval("\$pv = $str;");
 
-					$data[$k] =	$pv;
-				}
-			}
-		}
+                    $data[$k] = $pv;
+                }
+            }
+        }
 
-		// for files copy the source dir if the image has a 'PopulateFileFrom'
+        // for files copy the source dir if the image has a 'PopulateFileFrom'
         // Follows silverstripe/asset-admin logic, see AssetAdmin::apiCreateFile()
-		if(isset($data['PopulateFileFrom'])) {
-			if(!isset($data['Filename'])) {
-			    throw new \Exception('When passing "PopulateFileFrom", you must also pass "Filename" with the path that you want to file to be stored at (e.g. assets/test.jpg)');
+        if (isset($data['PopulateFileFrom'])) {
+            if (!isset($data['Filename'])) {
+                throw new \Exception('When passing "PopulateFileFrom", you must also pass "Filename" with the path that you want to file to be stored at (e.g. assets/test.jpg)');
             }
 
-		    $fixtureFilePath = BASE_PATH . '/'. $data['PopulateFileFrom'];
+            $fixtureFilePath = BASE_PATH . '/' . $data['PopulateFileFrom'];
             $upload = Upload::create();
             $upload->setReplaceFile(true);
 
-		    $folder = Folder::find_or_make(
-				str_replace('assets/', '', dirname($data['Filename']))
-			);
+            $folder = Folder::find_or_make(
+                str_replace('assets/', '', dirname($data['Filename']))
+            );
 
             $info = new \finfo(FILEINFO_MIME_TYPE);
 
@@ -71,7 +76,7 @@ class PopulateFactory extends FixtureFactory {
             // Disable is_uploaded_file() check in Upload_Validator
             $oldUseIsUploadedFile = Upload_Validator::config()->get('use_is_uploaded_file');
             Upload_Validator::config()->set('use_is_uploaded_file', false);
-            if(!$upload->validate($tmpFile)) {
+            if (!$upload->validate($tmpFile)) {
                 $errors = $upload->getErrors();
                 $message = array_shift($errors);
                 throw new Exception(sprintf('Error while populating from file %s: %s', $data['Filename'], $message));
@@ -96,93 +101,97 @@ class PopulateFactory extends FixtureFactory {
                 $data['ParentID'] = $f['File']->ParentID;
             }
 
-		}
+        }
 
-		// if any merge labels are defined then we should create the object
-		// from that
-		$lookup = null;
-		$mode = null;
+        // if any merge labels are defined then we should create the object
+        // from that
+        $lookup = null;
+        $mode = null;
 
-		if(isset($data['PopulateMergeWhen'])) {
-			$mode = 'PopulateMergeWhen';
+        if (isset($data['PopulateMergeWhen'])) {
+            $mode = 'PopulateMergeWhen';
 
-			$lookup = DataList::create($class)->where(
-				$data['PopulateMergeWhen']
-			);
+            $lookup = DataList::create($class)->where(
+                $data['PopulateMergeWhen']
+            );
 
-			unset($data['PopulateMergeWhen']);
+            unset($data['PopulateMergeWhen']);
 
-		} else if(isset($data['PopulateMergeMatch'])) {
-			$mode = 'PopulateMergeMatch';
-			$filter = array();
+        } else {
+            if (isset($data['PopulateMergeMatch'])) {
+                $mode = 'PopulateMergeMatch';
+                $filter = array();
 
-			foreach($data['PopulateMergeMatch'] as $field) {
-				$filter[$field] = $data[$field];
-			}
+                foreach ($data['PopulateMergeMatch'] as $field) {
+                    $filter[$field] = $data[$field];
+                }
 
-			if(!$filter) {
-				throw new \Exception('Not a valid PopulateMergeMatch filter');
-			}
+                if (!$filter) {
+                    throw new \Exception('Not a valid PopulateMergeMatch filter');
+                }
 
-			$lookup = DataList::create($class)->filter($filter);
+                $lookup = DataList::create($class)->filter($filter);
 
-			unset($data['PopulateMergeMatch']);
-		} else if(isset($data['PopulateMergeAny'])) {
-			$mode = 'PopulateMergeAny';
-			$lookup = DataList::create($class);
+                unset($data['PopulateMergeMatch']);
+            } else {
+                if (isset($data['PopulateMergeAny'])) {
+                    $mode = 'PopulateMergeAny';
+                    $lookup = DataList::create($class);
 
-			unset($data['PopulateMergeAny']);
-		}
+                    unset($data['PopulateMergeAny']);
+                }
+            }
+        }
 
-		if($lookup && $lookup->count() > 0) {
-			$existing = $lookup->first();
+        if ($lookup && $lookup->count() > 0) {
+            $existing = $lookup->first();
 
-			foreach($lookup as $old) {
-				if($old->ID == $existing->ID) {
-					continue;
-				}
+            foreach ($lookup as $old) {
+                if ($old->ID == $existing->ID) {
+                    continue;
+                }
 
-				if($old->hasExtension(Versioned::class)) {
-					foreach($old->getVersionedStages() as $stage) {
-						$old->deleteFromStage($stage);
-					}
-				}
+                if ($old->hasExtension(Versioned::class)) {
+                    foreach ($old->getVersionedStages() as $stage) {
+                        $old->deleteFromStage($stage);
+                    }
+                }
 
-				$old->delete();
-			}
+                $old->delete();
+            }
 
-			$blueprint = new FixtureBlueprint($class);
-			$obj = $blueprint->createObject($identifier, $data, $this->fixtures);
-			$latest = $obj->toMap();
+            $blueprint = new FixtureBlueprint($class);
+            $obj = $blueprint->createObject($identifier, $data, $this->fixtures);
+            $latest = $obj->toMap();
 
-			unset($latest['ID']);
+            unset($latest['ID']);
 
-			$existing->update($latest);
-			$existing->write();
+            $existing->update($latest);
+            $existing->write();
 
-			$obj->delete();
+            $obj->delete();
 
-			$this->fixtures[$class][$identifier] = $existing->ID;
+            $this->fixtures[$class][$identifier] = $existing->ID;
 
-			$obj = $existing;
-			$obj->flushCache();
-		}
-		else {
-			$obj = parent::createObject($class, $identifier, $data);
-		}
+            $obj = $existing;
+            $obj->flushCache();
+        } else {
+            $obj = parent::createObject($class, $identifier, $data);
+        }
 
-		if($obj->hasExtension(Versioned::class)) {
-			foreach($obj->getVersionedStages() as $stage) {
-				if($stage !== Versioned::DRAFT) {
+        if ($obj->hasExtension(Versioned::class)) {
+            /** @var DataObject|Versioned $obj */
+            $obj->write();
 
-					$obj->writeToStage(Versioned::DRAFT);
-					$obj->publish(Versioned::DRAFT, $stage);
-				}
-			}
+            if (Populate::config()->get('enable_publish_recursive')) {
+                $obj->publishRecursive();
+            } else {
+                $obj->publishSingle();
+            }
 
-			$obj->flushCache();
-		}
+            $obj->flushCache();
+        }
 
-		return $obj;
-	}
+        return $obj;
+    }
 }
