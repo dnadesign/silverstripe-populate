@@ -18,10 +18,10 @@ objects can be defined in YAML and shared around developers. This extends the
 ## Installation Instructions
 
 We normally just use Populate during the development phase of the project. After
-the project is live you may wish to remove the module from the repo.
+the project is live you may wish to remove the module from the repo. Otherwise everyone may be able to re-populate your database.
 
 ```
-composer require "dnadesign/silverstripe-populate:dev-master"
+composer require --dev "dnadesign/silverstripe-populate:^2"
 ```
 
 ## Setup
